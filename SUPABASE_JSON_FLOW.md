@@ -61,9 +61,17 @@ Trong Vercel (hoặc `.env` local) của `APP_7Steps_OK`, set:
 
 ```env
 REACT_APP_BIZCLAW_JSON_URL=https://<project-ref>.supabase.co/storage/v1/object/public/market-data/bizclaw/latest-scan.json
+
+# Optional: khi bấm Refresh Scan trên web app sẽ trigger scan + publish mới
+REACT_APP_BIZCLAW_TRIGGER_URL=https://<your-bizclaw-api-domain>/scan/publish?refresh=true
 ```
 
 `/scan-markets` sẽ ưu tiên đọc URL này, không cần gọi API backend local.
+
+Khi có `REACT_APP_BIZCLAW_TRIGGER_URL`, nút `Refresh Scan` sẽ:
+
+1. Gọi endpoint trigger để chạy scan mới và publish JSON.
+2. Tự fetch lại JSON public và cập nhật UI.
 
 ---
 

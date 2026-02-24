@@ -2,7 +2,7 @@ import os
 import time
 from typing import Any, Dict, List
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,6 +10,7 @@ from config import DATA_SOURCE
 from data_layer import initialize_data_source
 from main import run_scanner
 from payload_builder import build_scan_payload
+from supabase_publisher import publish_payload_to_supabase
 
 
 app = FastAPI(title="BizClaw API", version="1.0.0")
@@ -70,6 +71,24 @@ def health() -> Dict[str, Any]:
 @app.get("/scan")
 def scan(refresh: bool = Query(default=False)) -> Dict[str, Any]:
     return _get_payload(refresh=refresh)
+
+
+@app.get("/scan/publish")
+def scan_and_publish(refresh: bool = Query(default=True)) -> Dict[str, Any]:
+    payload = _get_payload(refresh=refresh)
+    payload_to_publish = dict(payload)
+    payload_to_publish.pop("cached", None)
+
+    try:
+        public_url, object_path = publish_payload_to_supabase(payload_to_publish)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Publish failed: {exc}") from exc
+
+    response = dict(payload)
+    response["published"] = True
+    response["publicJsonUrl"] = public_url
+    response["objectPath"] = object_path
+    return response
 
 
 if __name__ == "__main__":
