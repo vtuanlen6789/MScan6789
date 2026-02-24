@@ -1,0 +1,6 @@
+pandas>=2.0,<3.0
+streamlit>=1.30,<2.0
+yfinance>=0.2.50,<1.0
+
+# Optional: enable only if running with MetaTrader 5 terminal
+# MetaTrader5>=5.0.45
