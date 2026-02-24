@@ -102,3 +102,57 @@ Và thêm link mở tab mới:
 
 4. **Cảnh báo `use_container_width`**
    - Không chặn chạy app, chỉ là deprecation warning của Streamlit.
+
+---
+
+## 6) Chạy BizClaw ở chế độ JSON API (khuyến nghị cho Web App)
+
+Khi muốn React render trực tiếp bảng dữ liệu (không iframe), chạy API backend:
+
+```bash
+cd BizClaw
+source .venv/bin/activate
+pip install -r requirements.txt
+python api.py
+```
+
+API mặc định chạy ở:
+
+- `http://127.0.0.1:8000/health`
+- `http://127.0.0.1:8000/scan`
+
+Query hữu ích:
+
+- `/scan?refresh=true` để buộc scan mới
+- `/scan?refresh=false` để dùng cache tạm
+
+Biến môi trường tuỳ chọn:
+
+- `BIZCLAW_CACHE_TTL` (giây, mặc định `180`)
+- `BIZCLAW_CORS_ORIGINS` (vd: `https://your-vercel-app.vercel.app`)
+
+Ví dụ:
+
+```bash
+BIZCLAW_CORS_ORIGINS="http://localhost:3000" BIZCLAW_CACHE_TTL=120 python api.py
+```
+
+---
+
+## 7) Cấu hình Web App `APP_7Steps_OK`
+
+Trong `APP_7Steps_OK/.env`:
+
+```env
+REACT_APP_BIZCLAW_API_URL=http://127.0.0.1:8000
+REACT_APP_BIZCLAW_STREAMLIT_URL=https://mscan6789-n6lgffdmdbeyyfnfzyfnba.streamlit.app/
+```
+
+Sau đó chạy lại web app:
+
+```bash
+cd APP_7Steps_OK
+npm start
+```
+
+Trang `/scan-markets` sẽ lấy data từ API và render trực tiếp.
