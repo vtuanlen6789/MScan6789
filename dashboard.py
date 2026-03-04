@@ -22,9 +22,19 @@ if "last_opportunity_ranked" not in st.session_state:
 if "last_opportunity_top3" not in st.session_state:
     st.session_state["last_opportunity_top3"] = None
 
+default_mode = os.getenv("BIZCLAW_TRADING_MODE", "FAST").strip().upper()
+if default_mode not in {"FAST", "STABLE"}:
+    default_mode = "FAST"
+
+selected_mode = st.selectbox(
+    "Trading Mode",
+    options=["FAST", "STABLE"],
+    index=0 if default_mode == "FAST" else 1,
+)
+
 if st.button("Run Market Scan"):
     initialize_data_source()
-    results = run_scanner()
+    results = run_scanner(trading_mode=selected_mode)
     ranked, top3_opportunity = run_opportunity_scanner()
     payload = build_scan_payload(results, ranked, top3_opportunity)
     st.session_state["last_payload"] = payload

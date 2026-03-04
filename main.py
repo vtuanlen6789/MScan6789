@@ -31,8 +31,12 @@ BASE_DIR = Path(__file__).resolve().parent
 LOG_FILE = BASE_DIR / "logs" / "scan_log.csv"
 
 
-def run_scanner():
+def run_scanner(trading_mode=None):
     results = []
+
+    mode = (trading_mode or TRADING_MODE).strip().upper()
+    if mode not in {"FAST", "STABLE"}:
+        mode = TRADING_MODE
 
     for pair in PAIRS:
         m5 = get_data(pair, TF_M5)
@@ -123,7 +127,6 @@ def run_scanner():
         compliance = compliance_score(d1_score_display, h4_score_display, m30_score_display, d1_dir, h4_dir)
         trust = trust_score(compliance, conflict)
 
-        mode = TRADING_MODE
         anchor_tf = "H4" if mode == "FAST" else "D1"
         formation_tf = "M5" if mode == "FAST" else "M30"
 
