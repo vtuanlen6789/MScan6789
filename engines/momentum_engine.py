@@ -174,3 +174,7 @@ def calculate_multi_tf_momentum(m5_df, m30_df, h4_df, d1_df):
         "current": current,
         "history": histories,
     }
+
+
+def calculate_hybrid_momentum_at_offset(m5_df, m30_df, h4_df, d1_df, offset):
+    return _hybrid_momentum(offset, m5_df, m30_df, h4_df, d1_df)

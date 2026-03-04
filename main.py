@@ -2,16 +2,20 @@ import pandas as pd
 from datetime import datetime
 from pathlib import Path
 
-from config import PAIRS
+from config import PAIRS, TRADING_MODE, FORMATION_BARS
 from data_layer import initialize_data_source, get_data, TF_D1, TF_H4, TF_M30, TF_M5
 
 from engines.structure_engine import detect_direction, direction_label
 from engines.momentum_engine import calculate_multi_tf_momentum
 from engines.state_engine import calculate_history, calculate_driven, detect_state_from_history_driven
-from engines.core_engine import detect_core
 from engines.conflict_engine import detect_conflict
-from engines.mode_engine import detect_mode
 from engines.scoring_engine import compliance_score, trust_score, calculate_score_from_components
+from engines.formation_engine import (
+    build_formation_snapshot,
+    get_anchor_risk_zone,
+    get_entry_decision,
+    formation_state_to_core,
+)
 from engines.analysis_engine import (
     structural_summary,
     analytical_focus,
@@ -20,6 +24,7 @@ from engines.analysis_engine import (
     detect_momentum_driver,
     detect_cycle_state,
 )
+from engines.opportunity_engine import build_opportunity_row, correlation_filter
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -103,7 +108,7 @@ def run_scanner():
             current_mom["d1"],
         )
 
-        cycle, cycle_state, entry_status, risk_info = detect_cycle_state(
+        cycle, cycle_state, legacy_entry, risk_info = detect_cycle_state(
             d1_score_display,
             h4_score_display,
             m30_score_display,
@@ -114,15 +119,44 @@ def run_scanner():
         m30_dir_label = direction_label(m30_dir)
         m5_dir_label = direction_label(m5_dir)
 
-        state = h4_state
-
-        core = detect_core(d1_dir_label, h4_dir_label, abs(current_mom["m30"]) * 3)
-
-        compliance = compliance_score(d1_score_display, h4_score_display, m30_score_display, d1_dir, h4_dir)
         conflict = detect_conflict(current_mom["m5"], current_mom["m30"], current_mom["h4"], current_mom["d1"])
-
+        compliance = compliance_score(d1_score_display, h4_score_display, m30_score_display, d1_dir, h4_dir)
         trust = trust_score(compliance, conflict)
-        mode = detect_mode(state, conflict * 10)
+
+        mode = TRADING_MODE
+        anchor_tf = "H4" if mode == "FAST" else "D1"
+        formation_tf = "M5" if mode == "FAST" else "M30"
+
+        anchor_direction = h4_dir if mode == "FAST" else d1_dir
+        anchor_phase = h4_state if mode == "FAST" else d1_state
+        anchor_history = h4_history_level if mode == "FAST" else d1_history_level
+        anchor_driven = h4_driven if mode == "FAST" else d1_driven
+        anchor_risk_zone = get_anchor_risk_zone(anchor_history, anchor_driven, anchor_phase)
+
+        formation_snapshot = build_formation_snapshot(
+            mode,
+            FORMATION_BARS,
+            m5,
+            m30,
+            h4,
+            d1,
+        )
+
+        if formation_snapshot["formationReady"]:
+            entry_status, entry_reason, size_factor = get_entry_decision(
+                anchor_direction,
+                formation_snapshot["formationState"],
+                formation_snapshot["formationStatePrevious"],
+                anchor_risk_zone,
+            )
+        else:
+            entry_status = "⏳ LOADING..."
+            entry_reason = (
+                f"Collecting formation data ({formation_snapshot['formationArraySize']}/{FORMATION_BARS} bars)"
+            )
+            size_factor = 0.0
+
+        core = formation_state_to_core(formation_snapshot["formationState"])
 
         if conflict == 0:
             conflict_level = "Perfect"
@@ -143,7 +177,7 @@ def run_scanner():
             "Clarity": clarity,
             "D1": d1_dir_label,
             "H4": h4_dir_label,
-            "State": state,
+            "State": anchor_phase,
             "Core": core,
             "Mode": mode,
             "Momentum": current_mom["m30"],
@@ -177,7 +211,22 @@ def run_scanner():
             "D1_Memory": round(d1_memory, 3),
             "Driver": h4_driver,
             "Summary": f"{summary} | Entry: {entry_status}",
-            "Focus": f"{focus} | Driver: {h4_driver} | Risk: {risk_info} | Mem(H4): {h4_memory:.2f}"
+            "Focus": f"{focus} | Driver: {h4_driver} | Risk: {risk_info} | Mem(H4): {h4_memory:.2f}",
+            "EntryReason": entry_reason,
+            "SizeFactor": size_factor,
+            "AnchorTF": anchor_tf,
+            "AnchorDirection": direction_label(anchor_direction),
+            "AnchorPhase": anchor_phase,
+            "AnchorRiskZone": anchor_risk_zone,
+            "FormationTF": formation_tf,
+            "FormationReady": formation_snapshot["formationReady"],
+            "FormationStatePrevious": formation_snapshot["formationStatePrevious"],
+            "FormationState": formation_snapshot["formationState"],
+            "FormationBias": formation_snapshot["formationBias"],
+            "FormationDrive": formation_snapshot["formationDrive"],
+            "SwingCount": formation_snapshot["swingCount"],
+            "CompressionRatio": formation_snapshot["compressionRatio"],
+            "FormationBars": FORMATION_BARS,
         })
 
     results = sorted(results, key=lambda x: x["Trust"], reverse=True)
@@ -185,6 +234,27 @@ def run_scanner():
     save_log(results)
 
     return results
+
+
+def run_opportunity_scanner():
+    results = []
+
+    for pair in PAIRS:
+        m5 = get_data(pair, TF_M5)
+        d1 = get_data(pair, TF_D1)
+        h4 = get_data(pair, TF_H4)
+        m30 = get_data(pair, TF_M30)
+
+        if any(x is None for x in [m5, d1, h4, m30]):
+            continue
+
+        row = build_opportunity_row(pair, m5, m30, h4, d1)
+        results.append(row)
+
+    ranked = sorted(results, key=lambda x: x["score"], reverse=True)
+    top3 = correlation_filter(ranked, limit=3)
+
+    return ranked, top3
 
 
 def save_log(results):

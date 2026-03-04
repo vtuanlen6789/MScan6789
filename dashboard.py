@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 
-from main import run_scanner
+from main import run_scanner, run_opportunity_scanner
 from data_layer import initialize_data_source
 from payload_builder import build_scan_payload
 from supabase_publisher import publish_payload_to_supabase
@@ -16,11 +16,20 @@ if "last_payload" not in st.session_state:
 if "last_public_json_url" not in st.session_state:
     st.session_state["last_public_json_url"] = None
 
+if "last_opportunity_ranked" not in st.session_state:
+    st.session_state["last_opportunity_ranked"] = None
+
+if "last_opportunity_top3" not in st.session_state:
+    st.session_state["last_opportunity_top3"] = None
+
 if st.button("Run Market Scan"):
     initialize_data_source()
     results = run_scanner()
-    payload = build_scan_payload(results)
+    ranked, top3_opportunity = run_opportunity_scanner()
+    payload = build_scan_payload(results, ranked, top3_opportunity)
     st.session_state["last_payload"] = payload
+    st.session_state["last_opportunity_ranked"] = ranked
+    st.session_state["last_opportunity_top3"] = top3_opportunity
 
     df = pd.DataFrame(results)
 
@@ -30,6 +39,10 @@ if st.button("Run Market Scan"):
     ]
     tech_cols = [
         "Pair",
+        "AnchorTF", "AnchorDirection", "AnchorPhase", "AnchorRiskZone",
+        "FormationTF", "FormationReady", "FormationStatePrevious", "FormationState",
+        "FormationBias", "FormationDrive", "SwingCount", "CompressionRatio", "FormationBars",
+        "Entry", "EntryReason", "SizeFactor",
         "M5_Dir", "M5_Hist", "M5_Drv", "M5_State", "M5_Score",
         "M30_Dir", "M30_Hist", "M30_Drv", "M30_State", "M30_Score",
         "H4_Dir", "H4_Hist", "H4_Drv", "H4_State", "H4_Score",
@@ -40,7 +53,7 @@ if st.button("Run Market Scan"):
     st.markdown("## Market Overview")
     st.dataframe(df[overview_cols], use_container_width=True)
 
-    st.markdown("## Pine V1_4 Technical Matrix")
+    st.markdown("## Pine V1_6 Technical Matrix")
     st.dataframe(df[tech_cols], use_container_width=True)
 
     st.markdown("## Top Analytical Focus")
@@ -53,6 +66,26 @@ if st.button("Run Market Scan"):
         st.write(f"Core: {row['Core']} | Mode: {row['Mode']}")
         st.write(f"Summary: {row['Summary']}")
         st.write(f"Focus: {row['Focus']}")
+
+    st.markdown("## Opportunity Scanner (CAS/DS)")
+    opp_cols = [
+        "displaySymbol",
+        "state",
+        "age",
+        "drive",
+        "alignment",
+        "score",
+    ]
+    if ranked:
+        st.dataframe(pd.DataFrame(ranked)[opp_cols], use_container_width=True)
+    else:
+        st.info("No opportunity rows available.")
+
+    st.markdown("### Top 3 After Correlation Filter")
+    if top3_opportunity:
+        st.dataframe(pd.DataFrame(top3_opportunity)[opp_cols], use_container_width=True)
+    else:
+        st.info("No filtered opportunities available.")
 
     auto_publish = os.getenv("BIZCLAW_AUTO_PUBLISH_SUPABASE", "false").strip().lower() in {"1", "true", "yes", "on"}
     if auto_publish:

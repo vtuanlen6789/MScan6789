@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from config import DATA_SOURCE
 
@@ -11,6 +11,10 @@ OVERVIEW_COLS = [
 
 TECH_COLS = [
     "Pair",
+    "AnchorTF", "AnchorDirection", "AnchorPhase", "AnchorRiskZone",
+    "FormationTF", "FormationReady", "FormationStatePrevious", "FormationState",
+    "FormationBias", "FormationDrive", "SwingCount", "CompressionRatio", "FormationBars",
+    "Entry", "EntryReason", "SizeFactor",
     "M5_Dir", "M5_Hist", "M5_Drv", "M5_State", "M5_Score",
     "M30_Dir", "M30_Hist", "M30_Drv", "M30_State", "M30_Score",
     "H4_Dir", "H4_Hist", "H4_Drv", "H4_State", "H4_Score",
@@ -30,8 +34,12 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def build_scan_payload(results: List[Dict[str, Any]]) -> Dict[str, Any]:
-    return {
+def build_scan_payload(
+    results: List[Dict[str, Any]],
+    opportunity_ranked: Optional[List[Dict[str, Any]]] = None,
+    opportunity_top3: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    payload = {
         "generatedAt": _now_iso(),
         "source": DATA_SOURCE,
         "count": len(results),
@@ -40,3 +48,10 @@ def build_scan_payload(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         "technical": _extract_rows(results, TECH_COLS),
         "top3": results[:3],
     }
+
+    if opportunity_ranked is not None:
+        payload["opportunityRanking"] = opportunity_ranked
+    if opportunity_top3 is not None:
+        payload["opportunityTop3"] = opportunity_top3
+
+    return payload
