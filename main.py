@@ -25,6 +25,11 @@ from engines.analysis_engine import (
     detect_cycle_state,
 )
 from engines.opportunity_engine import build_opportunity_row, correlation_filter
+from engines.currency_strength_engine import (
+    REQUIRED_PAIRS as CURRENCY_STRENGTH_PAIRS,
+    compute_pair_metrics,
+    compute_currency_strength,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -258,6 +263,38 @@ def run_opportunity_scanner():
     top3 = correlation_filter(ranked, limit=3)
 
     return ranked, top3
+
+
+def run_currency_strength_table(rsi_period: int = 14, atr_period: int = 14):
+    rows = []
+    timeframe_map = [
+        ("M30", TF_M30),
+        ("H4", TF_H4),
+        ("D1", TF_D1),
+    ]
+
+    for timeframe_label, timeframe_code in timeframe_map:
+        pair_metrics = {}
+
+        for pair in CURRENCY_STRENGTH_PAIRS:
+            df = get_data(pair, timeframe_code)
+            if df is None or df.empty:
+                continue
+
+            pair_metrics[pair] = compute_pair_metrics(
+                df,
+                rsi_period=rsi_period,
+                atr_period=atr_period,
+            )
+
+        strength, missing_pairs = compute_currency_strength(pair_metrics)
+        rows.append({
+            "timeframe": timeframe_label,
+            "currencies": strength,
+            "missingPairs": missing_pairs,
+        })
+
+    return rows
 
 
 def save_log(results):

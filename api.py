@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import DATA_SOURCE
 from data_layer import initialize_data_source
-from main import run_scanner
+from main import run_scanner, run_currency_strength_table
 from payload_builder import build_scan_payload
 from supabase_publisher import publish_payload_to_supabase
 
@@ -39,7 +39,8 @@ CACHE_TTL_SECONDS = int(os.getenv("BIZCLAW_CACHE_TTL", "180"))
 def _build_payload() -> Dict[str, Any]:
     initialize_data_source()
     results = run_scanner()
-    payload = build_scan_payload(results)
+    currency_strength_table = run_currency_strength_table()
+    payload = build_scan_payload(results, currency_strength_table=currency_strength_table)
     return jsonable_encoder(payload)
 
 

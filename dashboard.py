@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 
-from main import run_scanner, run_opportunity_scanner
+from main import run_scanner, run_opportunity_scanner, run_currency_strength_table
 from data_layer import initialize_data_source
 from payload_builder import build_scan_payload
 from supabase_publisher import publish_payload_to_supabase
@@ -22,6 +22,40 @@ if "last_opportunity_ranked" not in st.session_state:
 if "last_opportunity_top3" not in st.session_state:
     st.session_state["last_opportunity_top3"] = None
 
+if "last_currency_strength_table" not in st.session_state:
+    st.session_state["last_currency_strength_table"] = None
+
+
+def _format_currency_strength_display(rows):
+    if not rows:
+        return pd.DataFrame()
+
+    currencies = ["USD", "EUR", "JPY", "GBP", "CHF"]
+    output = []
+
+    for row in rows:
+        display_row = {
+            "TimeFrame": row.get("timeframe"),
+        }
+
+        currency_pack = row.get("currencies", {})
+        for ccy in currencies:
+            metrics = currency_pack.get(ccy) or {}
+            rsi = metrics.get("rsi")
+            pc = metrics.get("pc")
+            atr = metrics.get("atr")
+
+            if rsi is None or pc is None or atr is None:
+                display_row[ccy] = "N/A"
+            else:
+                display_row[ccy] = f"{rsi:.1f} | {pc:.2f}% | {atr:.4f}"
+
+        missing_pairs = row.get("missingPairs") or []
+        display_row["MissingPairs"] = ", ".join(missing_pairs) if missing_pairs else ""
+        output.append(display_row)
+
+    return pd.DataFrame(output)
+
 default_mode = os.getenv("BIZCLAW_TRADING_MODE", "FAST").strip().upper()
 if default_mode not in {"FAST", "STABLE"}:
     default_mode = "FAST"
@@ -36,10 +70,12 @@ if st.button("Run Market Scan"):
     initialize_data_source()
     results = run_scanner(trading_mode=selected_mode)
     ranked, top3_opportunity = run_opportunity_scanner()
-    payload = build_scan_payload(results, ranked, top3_opportunity)
+    currency_strength_table = run_currency_strength_table()
+    payload = build_scan_payload(results, ranked, top3_opportunity, currency_strength_table)
     st.session_state["last_payload"] = payload
     st.session_state["last_opportunity_ranked"] = ranked
     st.session_state["last_opportunity_top3"] = top3_opportunity
+    st.session_state["last_currency_strength_table"] = currency_strength_table
 
     df = pd.DataFrame(results)
 
@@ -65,6 +101,9 @@ if st.button("Run Market Scan"):
 
     st.markdown("## Pine V1_6 Technical Matrix")
     st.dataframe(df[tech_cols], use_container_width=True)
+
+    st.markdown("## Currency Strength (RSI | Price Change | ATR)")
+    st.dataframe(_format_currency_strength_display(currency_strength_table), use_container_width=True)
 
     st.markdown("## Top Analytical Focus")
 

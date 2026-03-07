@@ -22,6 +22,7 @@ YAHOO_SYMBOL_MAP = {
     "EURUSD": ["EURUSD=X"],
     "EURJPY": ["EURJPY=X"],
     "USDJPY": ["JPY=X", "USDJPY=X"],
+    "CHFJPY": ["CHFJPY=X"],
     "GBPJPY": ["GBPJPY=X"],
     "GBPUSD": ["GBPUSD=X"],
     "EURGBP": ["EURGBP=X"],
