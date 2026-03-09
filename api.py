@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import DATA_SOURCE
 from data_layer import initialize_data_source
-from main import run_scanner, run_currency_strength_table
+from main import run_scanner, run_currency_strength_table, run_smc_scanner
 from payload_builder import build_scan_payload
 from supabase_publisher import publish_payload_to_supabase
 
@@ -40,7 +40,12 @@ def _build_payload() -> Dict[str, Any]:
     initialize_data_source()
     results = run_scanner()
     currency_strength_table = run_currency_strength_table()
-    payload = build_scan_payload(results, currency_strength_table=currency_strength_table)
+    smc_analysis = run_smc_scanner()
+    payload = build_scan_payload(
+        results,
+        currency_strength_table=currency_strength_table,
+        smc_analysis=smc_analysis,
+    )
     return jsonable_encoder(payload)
 
 

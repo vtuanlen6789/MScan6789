@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 
-from main import run_scanner, run_opportunity_scanner, run_currency_strength_table
+from main import run_scanner, run_opportunity_scanner, run_currency_strength_table, run_smc_scanner
 from data_layer import initialize_data_source
 from payload_builder import build_scan_payload
 from supabase_publisher import publish_payload_to_supabase
@@ -24,6 +24,58 @@ if "last_opportunity_top3" not in st.session_state:
 
 if "last_currency_strength_table" not in st.session_state:
     st.session_state["last_currency_strength_table"] = None
+
+if "last_smc_analysis" not in st.session_state:
+    st.session_state["last_smc_analysis"] = None
+
+
+SMC_DISPLAY_COLS = [
+    "pair",
+    "h4_swing_trend",
+    "h4_bos_up",
+    "h4_bos_down",
+    "h4_choch_bull",
+    "h4_choch_bear",
+    "h4_ob_bull",
+    "h4_ob_bear",
+    "h4_fvg_bull",
+    "h4_fvg_count",
+    "h4_poi_score",
+    "d1_swing_trend",
+    "d1_bos_up",
+    "d1_bos_down",
+    "d1_choch_bull",
+    "d1_choch_bear",
+    "entry_signal",
+    "entry_dir",
+    "entry_confluence",
+    "killzone_active",
+    "killzone_name",
+]
+
+
+def _render_smc_section(smc_analysis):
+    st.markdown("## SMC Analysis (BOS / CHoCH / OB / FVG / POI / Killzone)")
+    if not smc_analysis:
+        st.info("No SMC data available. Run Market Scan first.")
+        return
+    df_smc = pd.DataFrame(smc_analysis)
+    available = [c for c in SMC_DISPLAY_COLS if c in df_smc.columns]
+    st.dataframe(df_smc[available], use_container_width=True)
+
+    # Highlight pairs with active entry signal
+    signal_rows = [r for r in smc_analysis if r.get("entry_signal")]
+    if signal_rows:
+        st.markdown("### Entry Signals")
+        for row in signal_rows:
+            direction = row.get("entry_dir", "")
+            pair = row.get("pair", "")
+            reason = row.get("entry_reason", "")
+            kz = row.get("killzone_name", "—")
+            score = row.get("entry_confluence", 0)
+            st.success(f"**{pair}** {direction} | KZ: {kz} | Confluence: {score} | {reason}")
+    else:
+        st.info("No active entry signals in current scan.")
 
 
 def _format_currency_strength_display(rows):
@@ -71,11 +123,17 @@ if st.button("Run Market Scan"):
     results = run_scanner(trading_mode=selected_mode)
     ranked, top3_opportunity = run_opportunity_scanner()
     currency_strength_table = run_currency_strength_table()
-    payload = build_scan_payload(results, ranked, top3_opportunity, currency_strength_table)
+    smc_analysis = run_smc_scanner()
+    payload = build_scan_payload(
+        results, ranked, top3_opportunity,
+        currency_strength_table=currency_strength_table,
+        smc_analysis=smc_analysis,
+    )
     st.session_state["last_payload"] = payload
     st.session_state["last_opportunity_ranked"] = ranked
     st.session_state["last_opportunity_top3"] = top3_opportunity
     st.session_state["last_currency_strength_table"] = currency_strength_table
+    st.session_state["last_smc_analysis"] = smc_analysis
 
     df = pd.DataFrame(results)
 
@@ -115,6 +173,8 @@ if st.button("Run Market Scan"):
         st.write(f"Core: {row['Core']} | Mode: {row['Mode']}")
         st.write(f"Summary: {row['Summary']}")
         st.write(f"Focus: {row['Focus']}")
+
+    _render_smc_section(smc_analysis)
 
     st.markdown("## Opportunity Scanner (CAS/DS)")
     opp_cols = [

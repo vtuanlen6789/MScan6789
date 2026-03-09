@@ -39,6 +39,7 @@ def build_scan_payload(
     opportunity_ranked: Optional[List[Dict[str, Any]]] = None,
     opportunity_top3: Optional[List[Dict[str, Any]]] = None,
     currency_strength_table: Optional[List[Dict[str, Any]]] = None,
+    smc_analysis: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     payload = {
         "generatedAt": _now_iso(),
@@ -56,5 +57,7 @@ def build_scan_payload(
         payload["opportunityTop3"] = opportunity_top3
     if currency_strength_table is not None:
         payload["currencyStrengthTable"] = currency_strength_table
+    if smc_analysis is not None:
+        payload["smcAnalysis"] = smc_analysis
 
     return payload
