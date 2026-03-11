@@ -3,7 +3,7 @@ import pandas as pd
 import os
 
 from main import run_scanner, run_opportunity_scanner, run_currency_strength_table, run_smc_scanner
-from data_layer import initialize_data_source
+from data_layer import initialize_data_source, set_runtime_data_source, get_runtime_data_source_context
 from payload_builder import build_scan_payload
 from supabase_publisher import publish_payload_to_supabase
 
@@ -78,6 +78,21 @@ def _render_smc_section(smc_analysis):
         st.info("No active entry signals in current scan.")
 
 
+def _render_dataframe_section(title, df: pd.DataFrame, columns, empty_message: str):
+    st.markdown(f"## {title}")
+
+    if df is None or df.empty:
+        st.info(empty_message)
+        return
+
+    available = [col for col in columns if col in df.columns]
+    if not available:
+        st.info(empty_message)
+        return
+
+    st.dataframe(df[available], use_container_width=True)
+
+
 def _format_currency_strength_display(rows):
     if not rows:
         return pd.DataFrame()
@@ -112,13 +127,51 @@ default_mode = os.getenv("BIZCLAW_TRADING_MODE", "FAST").strip().upper()
 if default_mode not in {"FAST", "STABLE"}:
     default_mode = "FAST"
 
+default_source = os.getenv("BIZCLAW_DASHBOARD_DEFAULT_SOURCE", "yahoo").strip().lower()
+if default_source not in {"yahoo", "mt5_csv", "mt5"}:
+    default_source = "yahoo"
+
+source_labels = {
+    "yahoo": "Yahoo",
+    "mt5_csv": "MT5 CSV",
+    "mt5": "MetaTrader5 Terminal",
+}
+
+source_options = list(source_labels.keys())
+
+selected_source = st.selectbox(
+    "Data Source",
+    options=source_options,
+    index=source_options.index(default_source),
+    format_func=lambda value: source_labels.get(value, value),
+)
+
+default_export_dir = get_runtime_data_source_context().get("exportDir", "")
+selected_export_dir = default_export_dir
+
+if selected_source == "mt5_csv":
+    selected_export_dir = st.text_input(
+        "MT5 CSV Export Folder",
+        value=default_export_dir,
+        help="Folder containing normalized MT5 CSV files such as EURUSD_M5.csv",
+    ).strip() or default_export_dir
+
 selected_mode = st.selectbox(
     "Trading Mode",
     options=["FAST", "STABLE"],
     index=0 if default_mode == "FAST" else 1,
 )
 
+st.caption(
+    f"Selected source: {source_labels.get(selected_source, selected_source)}"
+    + (f" | Export dir: {selected_export_dir}" if selected_source == "mt5_csv" else "")
+)
+
 if st.button("Run Market Scan"):
+    set_runtime_data_source(
+        source=selected_source,
+        export_dir=selected_export_dir if selected_source == "mt5_csv" else None,
+    )
     initialize_data_source()
     results = run_scanner(trading_mode=selected_mode)
     ranked, top3_opportunity = run_opportunity_scanner()
@@ -154,25 +207,41 @@ if st.button("Run Market Scan"):
         "ConflictScore", "ConflictLevel", "Driver", "M30_Memory", "H4_Memory", "D1_Memory"
     ]
 
-    st.markdown("## Market Overview")
-    st.dataframe(df[overview_cols], use_container_width=True)
+    _render_dataframe_section(
+        "Market Overview",
+        df,
+        overview_cols,
+        "No scan rows available. Check the data source and try again.",
+    )
 
-    st.markdown("## Pine V1_6 Technical Matrix")
-    st.dataframe(df[tech_cols], use_container_width=True)
+    _render_dataframe_section(
+        "Pine V1_6 Technical Matrix",
+        df,
+        tech_cols,
+        "No technical matrix rows available. Check the data source and try again.",
+    )
 
-    st.markdown("## Currency Strength (RSI | Price Change | ATR)")
-    st.dataframe(_format_currency_strength_display(currency_strength_table), use_container_width=True)
+    currency_strength_df = _format_currency_strength_display(currency_strength_table)
+    _render_dataframe_section(
+        "Currency Strength (RSI | Price Change | ATR)",
+        currency_strength_df,
+        list(currency_strength_df.columns),
+        "No currency strength data available.",
+    )
 
     st.markdown("## Top Analytical Focus")
 
-    top3 = df.head(3)
+    top3 = df.head(3) if not df.empty else pd.DataFrame()
 
-    for _, row in top3.iterrows():
-        st.markdown(f"### {row['Pair']}")
-        st.write(f"Trust: {row['Trust']} | Clarity: {row['Clarity']}")
-        st.write(f"Core: {row['Core']} | Mode: {row['Mode']}")
-        st.write(f"Summary: {row['Summary']}")
-        st.write(f"Focus: {row['Focus']}")
+    if top3.empty:
+        st.info("No focus candidates available from the current scan.")
+    else:
+        for _, row in top3.iterrows():
+            st.markdown(f"### {row['Pair']}")
+            st.write(f"Trust: {row['Trust']} | Clarity: {row['Clarity']}")
+            st.write(f"Core: {row['Core']} | Mode: {row['Mode']}")
+            st.write(f"Summary: {row['Summary']}")
+            st.write(f"Focus: {row['Focus']}")
 
     _render_smc_section(smc_analysis)
 

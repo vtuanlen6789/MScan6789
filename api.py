@@ -1,13 +1,18 @@
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import DATA_SOURCE
-from data_layer import initialize_data_source
+from config import DATA_SOURCE, MT5_EXPORT_DIR, SUPPORTED_DATA_SOURCES
+from data_layer import (
+    get_runtime_data_source_context,
+    initialize_data_source,
+    set_runtime_data_source,
+    summarize_mt5_export_dir,
+)
 from main import run_scanner, run_currency_strength_table, run_smc_scanner
 from payload_builder import build_scan_payload
 from supabase_publisher import publish_payload_to_supabase
@@ -29,14 +34,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_CACHE: Dict[str, Any] = {
-    "at": 0.0,
-    "payload": None,
-}
+_CACHE: Dict[str, Dict[str, Any]] = {}
 CACHE_TTL_SECONDS = int(os.getenv("BIZCLAW_CACHE_TTL", "180"))
 
 
-def _build_payload() -> Dict[str, Any]:
+def _resolve_context(source: Optional[str] = None, export_dir: Optional[str] = None) -> Dict[str, str]:
+    return set_runtime_data_source(source=source, export_dir=export_dir)
+
+
+def _cache_key(context: Dict[str, str]) -> str:
+    return f"{context['source']}::{context['exportDir']}"
+
+
+def _build_payload(source: Optional[str] = None, export_dir: Optional[str] = None) -> Dict[str, Any]:
+    context = _resolve_context(source=source, export_dir=export_dir)
     initialize_data_source()
     results = run_scanner()
     currency_strength_table = run_currency_strength_table()
@@ -46,19 +57,28 @@ def _build_payload() -> Dict[str, Any]:
         currency_strength_table=currency_strength_table,
         smc_analysis=smc_analysis,
     )
+    payload["source"] = context["source"]
+    payload["exportDir"] = context["exportDir"]
+    if context["source"] == "mt5_csv":
+        payload["mt5ExportStatus"] = summarize_mt5_export_dir(context["exportDir"])
     return jsonable_encoder(payload)
 
 
-def _get_payload(refresh: bool) -> Dict[str, Any]:
+def _get_payload(refresh: bool, source: Optional[str] = None, export_dir: Optional[str] = None) -> Dict[str, Any]:
+    context = _resolve_context(source=source, export_dir=export_dir)
+    key = _cache_key(context)
     now = time.time()
-    if not refresh and _CACHE["payload"] is not None and (now - _CACHE["at"]) <= CACHE_TTL_SECONDS:
-        payload = dict(_CACHE["payload"])
+    cached_entry = _CACHE.get(key)
+    if not refresh and cached_entry is not None and (now - cached_entry["at"]) <= CACHE_TTL_SECONDS:
+        payload = dict(cached_entry["payload"])
         payload["cached"] = True
         return payload
 
-    payload = _build_payload()
-    _CACHE["at"] = now
-    _CACHE["payload"] = payload
+    payload = _build_payload(source=context["source"], export_dir=context["exportDir"])
+    _CACHE[key] = {
+        "at": now,
+        "payload": payload,
+    }
 
     payload = dict(payload)
     payload["cached"] = False
@@ -67,21 +87,52 @@ def _get_payload(refresh: bool) -> Dict[str, Any]:
 
 @app.get("/health")
 def health() -> Dict[str, Any]:
+    runtime = get_runtime_data_source_context()
     return {
         "status": "ok",
-        "source": DATA_SOURCE,
+        "source": runtime["source"],
+        "defaultSource": DATA_SOURCE,
+        "defaultMt5ExportDir": MT5_EXPORT_DIR,
+        "supportedSources": sorted(SUPPORTED_DATA_SOURCES),
         "cacheTtlSeconds": CACHE_TTL_SECONDS,
     }
 
 
 @app.get("/scan")
-def scan(refresh: bool = Query(default=False)) -> Dict[str, Any]:
-    return _get_payload(refresh=refresh)
+def scan(
+    refresh: bool = Query(default=False),
+    source: Optional[str] = Query(default=None),
+    export_dir: Optional[str] = Query(default=None),
+) -> Dict[str, Any]:
+    return _get_payload(refresh=refresh, source=source, export_dir=export_dir)
+
+
+@app.get("/data-source/status")
+def data_source_status(
+    source: Optional[str] = Query(default=None),
+    export_dir: Optional[str] = Query(default=None),
+) -> Dict[str, Any]:
+    context = _resolve_context(source=source, export_dir=export_dir)
+    response: Dict[str, Any] = {
+        "source": context["source"],
+        "defaultSource": DATA_SOURCE,
+        "exportDir": context["exportDir"],
+        "supportedSources": sorted(SUPPORTED_DATA_SOURCES),
+    }
+
+    if context["source"] == "mt5_csv":
+        response["mt5ExportStatus"] = summarize_mt5_export_dir(context["exportDir"])
+
+    return response
 
 
 @app.get("/scan/publish")
-def scan_and_publish(refresh: bool = Query(default=True)) -> Dict[str, Any]:
-    payload = _get_payload(refresh=refresh)
+def scan_and_publish(
+    refresh: bool = Query(default=True),
+    source: Optional[str] = Query(default=None),
+    export_dir: Optional[str] = Query(default=None),
+) -> Dict[str, Any]:
+    payload = _get_payload(refresh=refresh, source=source, export_dir=export_dir)
     payload_to_publish = dict(payload)
     payload_to_publish.pop("cached", None)
 

@@ -16,6 +16,12 @@ BASE_PROB = {
 }
 
 
+def _window_df(df: pd.DataFrame, lookback: int = 48) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    return df.tail(lookback).copy()
+
+
 def compute_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     high_low = df["high"] - df["low"]
     high_prev_close = (df["high"] - df["close"].shift(1)).abs()
@@ -79,14 +85,16 @@ def determine_state(age: int, drive: int) -> str:
 
 
 def _trend_bool(df: pd.DataFrame, bars: int = 10) -> bool:
+    if df is None or df.empty:
+        return False
     if len(df) <= bars:
         bars = max(1, len(df) - 1)
     return float(df["close"].iloc[-1]) > float(df["close"].iloc[-1 - bars])
 
 
-def compute_alignment(df_m5: pd.DataFrame, df_m30: pd.DataFrame, df_h4: pd.DataFrame, df_d1: pd.DataFrame) -> int:
-    trend_fast = _trend_bool(df_m5)
-    trend_stable = _trend_bool(df_m30)
+def compute_alignment(df_m5: pd.DataFrame, df_m30: pd.DataFrame, df_h4: pd.DataFrame, df_d1: pd.DataFrame, m5_m30_lookback: int = 48) -> int:
+    trend_fast = _trend_bool(_window_df(df_m5, m5_m30_lookback))
+    trend_stable = _trend_bool(_window_df(df_m30, m5_m30_lookback))
     trend_h4 = _trend_bool(df_h4)
     trend_d1 = _trend_bool(df_d1)
 
@@ -161,15 +169,25 @@ def correlation_filter(ranked_list: List[Dict[str, object]], limit: int = 3) -> 
     return selected
 
 
-def build_opportunity_row(symbol: str, df_m5: pd.DataFrame, df_m30: pd.DataFrame, df_h4: pd.DataFrame, df_d1: pd.DataFrame) -> Dict[str, object]:
-    age = compute_cycle_age(df_m30)
-    drive = compute_drive_score(df_m30)
+def build_opportunity_row(
+    symbol: str,
+    df_m5: pd.DataFrame,
+    df_m30: pd.DataFrame,
+    df_h4: pd.DataFrame,
+    df_d1: pd.DataFrame,
+    m5_m30_lookback: int = 48,
+) -> Dict[str, object]:
+    m5_windowed = _window_df(df_m5, m5_m30_lookback)
+    m30_windowed = _window_df(df_m30, m5_m30_lookback)
+
+    age = compute_cycle_age(m30_windowed, lookback=m5_m30_lookback)
+    drive = compute_drive_score(m30_windowed)
     state = determine_state(age, drive)
-    alignment = compute_alignment(df_m5, df_m30, df_h4, df_d1)
+    alignment = compute_alignment(m5_windowed, m30_windowed, df_h4, df_d1, m5_m30_lookback=m5_m30_lookback)
     score = compute_opportunity_score(state, age, drive, alignment)
 
     base, quote = _split_symbol(symbol)
-    trend_m30_up = _trend_bool(df_m30)
+    trend_m30_up = _trend_bool(m30_windowed)
 
     return {
         "symbol": symbol,
@@ -182,4 +200,6 @@ def build_opportunity_row(symbol: str, df_m5: pd.DataFrame, df_m30: pd.DataFrame
         "alignment": alignment,
         "score": score,
         "trend_m30_up": trend_m30_up,
+        "m5Lookback": m5_m30_lookback,
+        "m30Lookback": m5_m30_lookback,
     }

@@ -2,7 +2,7 @@ import pandas as pd
 from datetime import datetime
 from pathlib import Path
 
-from config import PAIRS, TRADING_MODE, FORMATION_BARS
+from config import PAIRS, TRADING_MODE, FORMATION_BARS, M5_M30_LOOKBACK_BARS
 from data_layer import initialize_data_source, get_data, TF_D1, TF_H4, TF_M30, TF_M5
 
 from engines.structure_engine import detect_direction, direction_label
@@ -55,12 +55,15 @@ def run_scanner(trading_mode=None):
         if any(x is None for x in [m5, d1, h4, m30]):
             continue
 
+        m5_windowed = m5.tail(M5_M30_LOOKBACK_BARS).copy()
+        m30_windowed = m30.tail(M5_M30_LOOKBACK_BARS).copy()
+
         d1_dir = detect_direction(d1)
         h4_dir = detect_direction(h4)
-        m30_dir = detect_direction(m30)
-        m5_dir = detect_direction(m5)
+        m30_dir = detect_direction(m30_windowed)
+        m5_dir = detect_direction(m5_windowed)
 
-        momentum_pack = calculate_multi_tf_momentum(m5, m30, h4, d1)
+        momentum_pack = calculate_multi_tf_momentum(m5_windowed, m30_windowed, h4, d1)
         current_mom = momentum_pack["current"]
         history_mom = momentum_pack["history"]
 
@@ -69,8 +72,8 @@ def run_scanner(trading_mode=None):
         h4_history_level = calculate_history(current_mom["h4"], history_mom["h4"][0], history_mom["h4"][1], history_mom["h4"][2], 0)
         d1_history_level = calculate_history(current_mom["d1"], history_mom["d1"][0], history_mom["d1"][1], 0, 0)
 
-        m5_driven = calculate_driven(m5)
-        m30_driven = calculate_driven(m30)
+        m5_driven = calculate_driven(m5_windowed)
+        m30_driven = calculate_driven(m30_windowed)
         h4_driven = calculate_driven(h4)
         d1_driven = calculate_driven(d1)
 
@@ -144,14 +147,23 @@ def run_scanner(trading_mode=None):
         anchor_driven = h4_driven if mode == "FAST" else d1_driven
         anchor_risk_zone = get_anchor_risk_zone(anchor_history, anchor_driven, anchor_phase)
 
-        formation_snapshot = build_formation_snapshot(
-            mode,
+        formation_snapshot_m5 = build_formation_snapshot(
+            "FAST",
             FORMATION_BARS,
             m5,
             m30,
             h4,
             d1,
         )
+        formation_snapshot_m30 = build_formation_snapshot(
+            "STABLE",
+            FORMATION_BARS,
+            m5,
+            m30,
+            h4,
+            d1,
+        )
+        formation_snapshot = formation_snapshot_m5 if mode == "FAST" else formation_snapshot_m30
 
         if formation_snapshot["formationReady"]:
             entry_status, entry_reason, size_factor = get_entry_decision(
@@ -161,9 +173,15 @@ def run_scanner(trading_mode=None):
                 anchor_risk_zone,
             )
         else:
+            formation_active_size = formation_snapshot["formationArraySize"]
+            formation_m5_size = formation_snapshot_m5["formationArraySize"]
+            formation_m30_size = formation_snapshot_m30["formationArraySize"]
             entry_status = "⏳ LOADING..."
             entry_reason = (
-                f"Collecting formation data ({formation_snapshot['formationArraySize']}/{FORMATION_BARS} bars)"
+                "Collecting formation data "
+                f"(active {formation_tf}: {formation_active_size}/{FORMATION_BARS} | "
+                f"M5: {formation_m5_size}/{FORMATION_BARS} | "
+                f"M30: {formation_m30_size}/{FORMATION_BARS})"
             )
             size_factor = 0.0
 
@@ -220,6 +238,8 @@ def run_scanner(trading_mode=None):
             "M30_Memory": round(m30_memory, 3),
             "H4_Memory": round(h4_memory, 3),
             "D1_Memory": round(d1_memory, 3),
+            "M5Lookback": M5_M30_LOOKBACK_BARS,
+            "M30Lookback": M5_M30_LOOKBACK_BARS,
             "Driver": h4_driver,
             "Summary": f"{summary} | Entry: {entry_status}",
             "Focus": f"{focus} | Driver: {h4_driver} | Risk: {risk_info} | Mem(H4): {h4_memory:.2f}",
@@ -230,6 +250,7 @@ def run_scanner(trading_mode=None):
             "AnchorPhase": anchor_phase,
             "AnchorRiskZone": anchor_risk_zone,
             "FormationTF": formation_tf,
+            "FormationScanTFs": "M5+M30",
             "FormationReady": formation_snapshot["formationReady"],
             "FormationStatePrevious": formation_snapshot["formationStatePrevious"],
             "FormationState": formation_snapshot["formationState"],
@@ -237,6 +258,20 @@ def run_scanner(trading_mode=None):
             "FormationDrive": formation_snapshot["formationDrive"],
             "SwingCount": formation_snapshot["swingCount"],
             "CompressionRatio": formation_snapshot["compressionRatio"],
+            "FormationM5Ready": formation_snapshot_m5["formationReady"],
+            "FormationM5StatePrevious": formation_snapshot_m5["formationStatePrevious"],
+            "FormationM5State": formation_snapshot_m5["formationState"],
+            "FormationM5Bias": formation_snapshot_m5["formationBias"],
+            "FormationM5Drive": formation_snapshot_m5["formationDrive"],
+            "FormationM5SwingCount": formation_snapshot_m5["swingCount"],
+            "FormationM5CompressionRatio": formation_snapshot_m5["compressionRatio"],
+            "FormationM30Ready": formation_snapshot_m30["formationReady"],
+            "FormationM30StatePrevious": formation_snapshot_m30["formationStatePrevious"],
+            "FormationM30State": formation_snapshot_m30["formationState"],
+            "FormationM30Bias": formation_snapshot_m30["formationBias"],
+            "FormationM30Drive": formation_snapshot_m30["formationDrive"],
+            "FormationM30SwingCount": formation_snapshot_m30["swingCount"],
+            "FormationM30CompressionRatio": formation_snapshot_m30["compressionRatio"],
             "FormationBars": FORMATION_BARS,
         })
 
@@ -259,7 +294,14 @@ def run_opportunity_scanner():
         if any(x is None for x in [m5, d1, h4, m30]):
             continue
 
-        row = build_opportunity_row(pair, m5, m30, h4, d1)
+        row = build_opportunity_row(
+            pair,
+            m5,
+            m30,
+            h4,
+            d1,
+            m5_m30_lookback=M5_M30_LOOKBACK_BARS,
+        )
         results.append(row)
 
     ranked = sorted(results, key=lambda x: x["score"], reverse=True)
