@@ -13,7 +13,8 @@ from data_layer import (
     set_runtime_data_source,
     summarize_mt5_export_dir,
 )
-from main import run_scanner, run_currency_strength_table, run_smc_scanner
+from main import run_scanner, run_currency_strength_table, run_smc_scanner, run_opportunity_scanner
+from engines.market_focus_engine import run_market_focus_engine
 from payload_builder import build_scan_payload
 from supabase_publisher import publish_payload_to_supabase
 
@@ -50,12 +51,23 @@ def _build_payload(source: Optional[str] = None, export_dir: Optional[str] = Non
     context = _resolve_context(source=source, export_dir=export_dir)
     initialize_data_source()
     results = run_scanner()
+    opportunity_ranked, opportunity_top3 = run_opportunity_scanner()
     currency_strength_table = run_currency_strength_table()
     smc_analysis = run_smc_scanner()
-    payload = build_scan_payload(
-        results,
+    focus_ranking, focus_top3 = run_market_focus_engine(
+        core_results=results,
+        opportunity_ranked=opportunity_ranked,
         currency_strength_table=currency_strength_table,
         smc_analysis=smc_analysis,
+    )
+    payload = build_scan_payload(
+        results,
+        opportunity_ranked=opportunity_ranked,
+        opportunity_top3=opportunity_top3,
+        currency_strength_table=currency_strength_table,
+        smc_analysis=smc_analysis,
+        focus_ranking=focus_ranking,
+        focus_top3=focus_top3,
     )
     payload["source"] = context["source"]
     payload["exportDir"] = context["exportDir"]

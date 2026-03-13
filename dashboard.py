@@ -4,6 +4,7 @@ import os
 
 from main import run_scanner, run_opportunity_scanner, run_currency_strength_table, run_smc_scanner
 from data_layer import initialize_data_source, set_runtime_data_source, get_runtime_data_source_context
+from engines.market_focus_engine import run_market_focus_engine
 from payload_builder import build_scan_payload
 from supabase_publisher import publish_payload_to_supabase
 
@@ -28,6 +29,12 @@ if "last_currency_strength_table" not in st.session_state:
 if "last_smc_analysis" not in st.session_state:
     st.session_state["last_smc_analysis"] = None
 
+if "last_focus_ranking" not in st.session_state:
+    st.session_state["last_focus_ranking"] = None
+
+if "last_focus_top3" not in st.session_state:
+    st.session_state["last_focus_top3"] = None
+
 
 SMC_DISPLAY_COLS = [
     "pair",
@@ -51,6 +58,21 @@ SMC_DISPLAY_COLS = [
     "entry_confluence",
     "killzone_active",
     "killzone_name",
+]
+
+FOCUS_DISPLAY_COLS = [
+    "Pair",
+    "FocusScore",
+    "TrustScore",
+    "OpportunityScore",
+    "CurrencyStrengthScore",
+    "ClarityScore",
+    "SmcScore",
+    "Cycle",
+    "Core",
+    "Entry",
+    "MacroBias",
+    "SmcSignalSummary",
 ]
 
 
@@ -177,18 +199,29 @@ if st.button("Run Market Scan"):
     ranked, top3_opportunity = run_opportunity_scanner()
     currency_strength_table = run_currency_strength_table()
     smc_analysis = run_smc_scanner()
+    focus_ranking, focus_top3 = run_market_focus_engine(
+        core_results=results,
+        opportunity_ranked=ranked,
+        currency_strength_table=currency_strength_table,
+        smc_analysis=smc_analysis,
+    )
     payload = build_scan_payload(
         results, ranked, top3_opportunity,
         currency_strength_table=currency_strength_table,
         smc_analysis=smc_analysis,
+        focus_ranking=focus_ranking,
+        focus_top3=focus_top3,
     )
     st.session_state["last_payload"] = payload
     st.session_state["last_opportunity_ranked"] = ranked
     st.session_state["last_opportunity_top3"] = top3_opportunity
     st.session_state["last_currency_strength_table"] = currency_strength_table
     st.session_state["last_smc_analysis"] = smc_analysis
+    st.session_state["last_focus_ranking"] = focus_ranking
+    st.session_state["last_focus_top3"] = focus_top3
 
     df = pd.DataFrame(results)
+    focus_df = pd.DataFrame(focus_ranking)
 
     overview_cols = [
         "Pair", "Trust", "Clarity", "Cycle", "CycleState", "Entry",
@@ -221,6 +254,13 @@ if st.button("Run Market Scan"):
         "No technical matrix rows available. Check the data source and try again.",
     )
 
+    _render_dataframe_section(
+        "Market Focus Engine Ranking",
+        focus_df,
+        FOCUS_DISPLAY_COLS,
+        "No focus ranking available. Run the scan again.",
+    )
+
     currency_strength_df = _format_currency_strength_display(currency_strength_table)
     _render_dataframe_section(
         "Currency Strength (RSI | Price Change | ATR)",
@@ -231,17 +271,17 @@ if st.button("Run Market Scan"):
 
     st.markdown("## Top Analytical Focus")
 
-    top3 = df.head(3) if not df.empty else pd.DataFrame()
+    top3 = pd.DataFrame(focus_top3) if focus_top3 else pd.DataFrame()
 
     if top3.empty:
         st.info("No focus candidates available from the current scan.")
     else:
         for _, row in top3.iterrows():
-            st.markdown(f"### {row['Pair']}")
-            st.write(f"Trust: {row['Trust']} | Clarity: {row['Clarity']}")
-            st.write(f"Core: {row['Core']} | Mode: {row['Mode']}")
-            st.write(f"Summary: {row['Summary']}")
-            st.write(f"Focus: {row['Focus']}")
+            st.markdown(f"### {row['Pair']} — FocusScore {row['FocusScore']}")
+            st.write(f"Trust: {row['Trust']} | Clarity: {row['Clarity']} | Opportunity: {row['OpportunityScore']}")
+            st.write(f"Core: {row['Core']} | Cycle: {row['Cycle']} | Entry: {row['Entry']}")
+            st.write(f"Macro Bias: {row['MacroBias']} | SMC: {row['SmcSignalSummary']}")
+            st.write(f"Actionable: {row['ActionableSummary']}")
 
     _render_smc_section(smc_analysis)
 
