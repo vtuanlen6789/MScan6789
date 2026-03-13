@@ -105,6 +105,45 @@ def _parse_datetime_series(series: pd.Series) -> pd.Series:
     return converted
 
 
+def _coerce_first_series(df: pd.DataFrame, column_name: str) -> Optional[pd.Series]:
+    if column_name not in df.columns:
+        return None
+
+    selected = df.loc[:, column_name]
+    if isinstance(selected, pd.DataFrame):
+        if selected.shape[1] == 0:
+            return None
+        return selected.iloc[:, 0]
+    return selected
+
+
+def _canonicalize_ohlc_frame(df: pd.DataFrame) -> Optional[pd.DataFrame]:
+    required = ["open", "high", "low", "close"]
+    canonical: Dict[str, pd.Series] = {}
+
+    for col in required:
+        series = _coerce_first_series(df, col)
+        if series is None:
+            return None
+        canonical[col] = pd.to_numeric(series, errors="coerce")
+
+    tick_volume = _coerce_first_series(df, "tick_volume")
+    if tick_volume is not None:
+        canonical["tick_volume"] = pd.to_numeric(tick_volume, errors="coerce")
+
+    datetime_series = _coerce_first_series(df, "datetime")
+    if datetime_series is not None:
+        canonical["datetime"] = datetime_series
+
+    out = pd.DataFrame(canonical)
+    out = out.dropna(subset=required)
+
+    if "datetime" in out.columns:
+        out = out.dropna(subset=["datetime"]).sort_values("datetime")
+
+    return out.reset_index(drop=True)
+
+
 def _normalize_ohlc(df):
     if df is None or df.empty:
         return None
@@ -127,11 +166,7 @@ def _normalize_ohlc(df):
         "Volume": "tick_volume",
     }
     out = df.rename(columns=rename_map)
-    required = ["open", "high", "low", "close"]
-    if any(col not in out.columns for col in required):
-        return None
-
-    return out.dropna(subset=required).reset_index(drop=True)
+    return _canonicalize_ohlc_frame(out)
 
 
 def _normalize_mt5_csv(df: pd.DataFrame) -> Optional[pd.DataFrame]:
@@ -184,12 +219,7 @@ def _normalize_mt5_csv(df: pd.DataFrame) -> Optional[pd.DataFrame]:
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce")
 
-    out = out.dropna(subset=required)
-
-    if "datetime" in out.columns:
-        out = out.dropna(subset=["datetime"]).sort_values("datetime")
-
-    return out.reset_index(drop=True)
+    return _canonicalize_ohlc_frame(out)
 
 
 def _candidate_mt5_paths(base_dir: Path, symbol: str, timeframe: str) -> List[Path]:
