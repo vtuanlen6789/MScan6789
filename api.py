@@ -49,6 +49,50 @@ def _cache_key(context: Dict[str, str]) -> str:
     return f"{context['source']}::{context['exportDir']}"
 
 
+def _build_scan_payload_safe(
+    results: List[Dict[str, Any]],
+    opportunity_ranked: List[Dict[str, Any]],
+    opportunity_top3: List[Dict[str, Any]],
+    currency_strength_table: List[Dict[str, Any]],
+    smc_analysis: List[Dict[str, Any]],
+    focus_ranking: List[Dict[str, Any]],
+    focus_top3: List[Dict[str, Any]],
+    indicator_scan_table: List[Dict[str, Any]],
+    indicator_trend_ranking: List[Dict[str, Any]],
+    indicator_trend_top3: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    try:
+        return build_scan_payload(
+            results,
+            opportunity_ranked=opportunity_ranked,
+            opportunity_top3=opportunity_top3,
+            currency_strength_table=currency_strength_table,
+            smc_analysis=smc_analysis,
+            focus_ranking=focus_ranking,
+            focus_top3=focus_top3,
+            indicator_scan_table=indicator_scan_table,
+            indicator_trend_ranking=indicator_trend_ranking,
+            indicator_trend_top3=indicator_trend_top3,
+        )
+    except TypeError as exc:
+        if "indicator_trend" not in str(exc):
+            raise
+
+        payload = build_scan_payload(
+            results,
+            opportunity_ranked=opportunity_ranked,
+            opportunity_top3=opportunity_top3,
+            currency_strength_table=currency_strength_table,
+            smc_analysis=smc_analysis,
+            focus_ranking=focus_ranking,
+            focus_top3=focus_top3,
+            indicator_scan_table=indicator_scan_table,
+        )
+        payload["indicatorTrendRanking"] = indicator_trend_ranking
+        payload["indicatorTrendTop3"] = indicator_trend_top3
+        return payload
+
+
 def _build_payload(source: Optional[str] = None, export_dir: Optional[str] = None) -> Dict[str, Any]:
     context = _resolve_context(source=source, export_dir=export_dir)
     initialize_data_source()
@@ -64,8 +108,8 @@ def _build_payload(source: Optional[str] = None, export_dir: Optional[str] = Non
         currency_strength_table=currency_strength_table,
         smc_analysis=smc_analysis,
     )
-    payload = build_scan_payload(
-        results,
+    payload = _build_scan_payload_safe(
+        results=results,
         opportunity_ranked=opportunity_ranked,
         opportunity_top3=opportunity_top3,
         currency_strength_table=currency_strength_table,

@@ -195,6 +195,50 @@ def _format_indicator_trend_display(rows):
     available = [col for col in ordered_cols if col in df.columns]
     return df[available]
 
+
+def _build_scan_payload_safe(
+    results,
+    ranked,
+    top3_opportunity,
+    currency_strength_table,
+    smc_analysis,
+    focus_ranking,
+    focus_top3,
+    indicator_scan_table,
+    indicator_trend_ranking,
+    indicator_trend_top3,
+):
+    try:
+        return build_scan_payload(
+            results,
+            opportunity_ranked=ranked,
+            opportunity_top3=top3_opportunity,
+            currency_strength_table=currency_strength_table,
+            smc_analysis=smc_analysis,
+            focus_ranking=focus_ranking,
+            focus_top3=focus_top3,
+            indicator_scan_table=indicator_scan_table,
+            indicator_trend_ranking=indicator_trend_ranking,
+            indicator_trend_top3=indicator_trend_top3,
+        )
+    except TypeError as exc:
+        if "indicator_trend" not in str(exc):
+            raise
+
+        payload = build_scan_payload(
+            results,
+            opportunity_ranked=ranked,
+            opportunity_top3=top3_opportunity,
+            currency_strength_table=currency_strength_table,
+            smc_analysis=smc_analysis,
+            focus_ranking=focus_ranking,
+            focus_top3=focus_top3,
+            indicator_scan_table=indicator_scan_table,
+        )
+        payload["indicatorTrendRanking"] = indicator_trend_ranking
+        payload["indicatorTrendTop3"] = indicator_trend_top3
+        return payload
+
 default_mode = os.getenv("BIZCLAW_TRADING_MODE", "FAST").strip().upper()
 if default_mode not in {"FAST", "STABLE"}:
     default_mode = "FAST"
@@ -257,8 +301,10 @@ if st.button("Run Market Scan"):
         currency_strength_table=currency_strength_table,
         smc_analysis=smc_analysis,
     )
-    payload = build_scan_payload(
-        results, ranked, top3_opportunity,
+    payload = _build_scan_payload_safe(
+        results=results,
+        ranked=ranked,
+        top3_opportunity=top3_opportunity,
         currency_strength_table=currency_strength_table,
         smc_analysis=smc_analysis,
         focus_ranking=focus_ranking,
