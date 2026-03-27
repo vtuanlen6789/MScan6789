@@ -3,19 +3,13 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 
-TIMEFRAME_SIGNAL_WEIGHTS: Dict[str, float] = {
-    "D1": 0.45,
-    "H4": 0.35,
-    "M30": 0.20,
-    "M5": 0.20,
-}
-
 PROFILE_WEIGHTS: Dict[str, Dict[str, float]] = {
-    "D1-H4-M30": {"D1": 0.45, "H4": 0.35, "M30": 0.20},
-    "H4-M30-M5": {"H4": 0.45, "M30": 0.35, "M5": 0.20},
+    "D1-H4": {"D1": 0.55, "H4": 0.45},
+    "H4-M30": {"H4": 0.55, "M30": 0.45},
+    "M30-M5": {"M30": 0.55, "M5": 0.45},
 }
 
-PROFILE_ORDER = ["D1-H4-M30", "H4-M30-M5"]
+PROFILE_ORDER = ["D1-H4", "H4-M30", "M30-M5"]
 
 
 def _safe_float(value: Any) -> Optional[float]:

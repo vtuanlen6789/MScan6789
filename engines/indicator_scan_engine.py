@@ -9,8 +9,8 @@ from config import PAIRS
 from data_layer import TF_D1, TF_H4, TF_M30, TF_M5, get_data
 
 
-RSI_LENGTH = 13
-ATR_LENGTH = 13
+RSI_LENGTH = 8
+ATR_LENGTH = 8
 SMA_LENGTH = 13
 WMA_LENGTH = 55
 
