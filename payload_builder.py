@@ -42,6 +42,7 @@ def build_scan_payload(
     smc_analysis: Optional[List[Dict[str, Any]]] = None,
     focus_ranking: Optional[List[Dict[str, Any]]] = None,
     focus_top3: Optional[List[Dict[str, Any]]] = None,
+    indicator_scan_table: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     payload = {
         "generatedAt": _now_iso(),
@@ -65,5 +66,7 @@ def build_scan_payload(
         payload["focusRanking"] = focus_ranking
     if focus_top3 is not None:
         payload["focusTop3"] = focus_top3
+    if indicator_scan_table is not None:
+        payload["indicatorScanTable"] = indicator_scan_table
 
     return payload

@@ -4,6 +4,7 @@ import os
 
 from main import run_scanner, run_opportunity_scanner, run_currency_strength_table, run_smc_scanner
 from data_layer import initialize_data_source, set_runtime_data_source, get_runtime_data_source_context
+from engines.indicator_scan_engine import run_indicator_scan_table
 from engines.market_focus_engine import run_market_focus_engine
 from payload_builder import build_scan_payload
 from supabase_publisher import publish_payload_to_supabase
@@ -34,6 +35,9 @@ if "last_focus_ranking" not in st.session_state:
 
 if "last_focus_top3" not in st.session_state:
     st.session_state["last_focus_top3"] = None
+
+if "last_indicator_scan_table" not in st.session_state:
+    st.session_state["last_indicator_scan_table"] = None
 
 
 SMC_DISPLAY_COLS = [
@@ -145,6 +149,25 @@ def _format_currency_strength_display(rows):
 
     return pd.DataFrame(output)
 
+
+def _format_indicator_scan_display(rows):
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows)
+    ordered_cols = [
+        "Pair",
+        "Timeframe",
+        "RSI",
+        "RSIwSMA",
+        "RSIwWMA",
+        "ATR",
+        "ATRwSMA",
+        "ATRwWMA",
+    ]
+    available = [col for col in ordered_cols if col in df.columns]
+    return df[available]
+
 default_mode = os.getenv("BIZCLAW_TRADING_MODE", "FAST").strip().upper()
 if default_mode not in {"FAST", "STABLE"}:
     default_mode = "FAST"
@@ -199,6 +222,7 @@ if st.button("Run Market Scan"):
     ranked, top3_opportunity = run_opportunity_scanner()
     currency_strength_table = run_currency_strength_table()
     smc_analysis = run_smc_scanner()
+    indicator_scan_table = run_indicator_scan_table()
     focus_ranking, focus_top3 = run_market_focus_engine(
         core_results=results,
         opportunity_ranked=ranked,
@@ -211,6 +235,7 @@ if st.button("Run Market Scan"):
         smc_analysis=smc_analysis,
         focus_ranking=focus_ranking,
         focus_top3=focus_top3,
+        indicator_scan_table=indicator_scan_table,
     )
     st.session_state["last_payload"] = payload
     st.session_state["last_opportunity_ranked"] = ranked
@@ -219,6 +244,7 @@ if st.button("Run Market Scan"):
     st.session_state["last_smc_analysis"] = smc_analysis
     st.session_state["last_focus_ranking"] = focus_ranking
     st.session_state["last_focus_top3"] = focus_top3
+    st.session_state["last_indicator_scan_table"] = indicator_scan_table
 
     df = pd.DataFrame(results)
     focus_df = pd.DataFrame(focus_ranking)
@@ -267,6 +293,14 @@ if st.button("Run Market Scan"):
         currency_strength_df,
         list(currency_strength_df.columns),
         "No currency strength data available.",
+    )
+
+    indicator_scan_df = _format_indicator_scan_display(indicator_scan_table)
+    _render_dataframe_section(
+        "Indicator Scan Matrix (RSI / ATR by Pair & TF)",
+        indicator_scan_df,
+        list(indicator_scan_df.columns),
+        "No indicator scan data available.",
     )
 
     st.markdown("## Top Analytical Focus")

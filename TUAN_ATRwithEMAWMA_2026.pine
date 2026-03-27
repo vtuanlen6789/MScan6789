@@ -1,0 +1,47 @@
+//@version=6
+indicator(title="ATR (RSI-style Structure)", shorttitle="ATR", format=format.price, precision=2, timeframe="", timeframe_gaps=true)
+
+// ====== MA FUNCTION ======
+ma(source, length, type) =>
+    switch type
+        "SMA" => ta.sma(source, length)
+        "Bollinger Bands" => ta.sma(source, length)
+        "EMA" => ta.ema(source, length)
+        "SMMA (RMA)" => ta.rma(source, length)
+        "WMA" => ta.wma(source, length)
+        "VWMA" => ta.vwma(source, length)
+
+// ====== INPUT ======
+atrLengthInput = input.int(13, minval=1, title="ATR Length", group="ATR Settings")
+atrSourceInput = input.source(close, "Source (not used in ATR)", group="ATR Settings")
+
+maTypeInput = input.string("SMA", title="MA Type", options=["SMA", "Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group="MA Settings", display=display.data_window)
+maLengthInput = input.int(13, title="MA Length", group="MA Settings", display=display.data_window)
+
+WMATypeInput = input.string("WMA", title="WMA Type", options=["SMA", "Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group="MA Settings", display=display.data_window)
+WMALengthInput = input.int(55, title="WMA Length", group="MA Settings", display=display.data_window)
+
+// ====== ATR CALCULATION (THAY RSI) ======
+atr = ta.atr(atrLengthInput)
+
+// ====== MA giống hệt RSI structure ======
+atrMA = ma(atr, maLengthInput, maTypeInput)
+atrWMA = ma(atr, WMALengthInput, WMATypeInput)
+
+var isBB = maTypeInput == "Bollinger Bands"
+
+// ====== PLOT ======
+atrPlot = plot(atr, "ATR", color=#00fc00, linewidth=2, style=plot.style_stepline)
+plot(atrMA, "ATR-based MA", color=#fa1717, linewidth=2)
+plot(atrWMA, "ATR-based WMA", color=#0018f0, linewidth=2)
+
+// ====== LEVELS (ADAPT FROM RSI → ATR) ======
+// Dùng ATR MA làm trung tâm thay vì fixed 50
+
+upperBand      = hline(0, "Dynamic (use MA instead)", color=color.new(#00e41e, 100))
+warnUpperBand  = hline(0, "Dynamic", color=color.new(#fde507, 100))
+sidewayHigh    = hline(0, "Dynamic", color=color.new(#0bf0f8, 100))
+midline        = plot(atrMA, "ATR Middle Band", color=color.new(#787B86, 50))
+sidewayLow     = hline(0, "Dynamic", color=color.new(#0bf0f8, 100))
+warnLowerBand  = hline(0, "Dynamic", color=color.new(#fde507, 100))
+lowerBand      = hline(0, "Dynamic", color=color.new(#f70101, 100))

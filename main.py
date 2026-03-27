@@ -33,6 +33,7 @@ from engines.currency_strength_engine import (
     compute_pair_metrics,
     compute_currency_strength,
 )
+from engines.indicator_scan_engine import run_indicator_scan_table
 
 
 BASE_DIR = Path(__file__).resolve().parent
