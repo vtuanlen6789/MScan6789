@@ -5,6 +5,7 @@ import os
 from main import run_scanner, run_opportunity_scanner, run_currency_strength_table, run_smc_scanner
 from data_layer import initialize_data_source, set_runtime_data_source, get_runtime_data_source_context
 from engines.indicator_scan_engine import run_indicator_scan_table
+from engines.indicator_trend_engine import select_top_indicator_trends
 from engines.market_focus_engine import run_market_focus_engine
 from payload_builder import build_scan_payload
 from supabase_publisher import publish_payload_to_supabase
@@ -38,6 +39,12 @@ if "last_focus_top3" not in st.session_state:
 
 if "last_indicator_scan_table" not in st.session_state:
     st.session_state["last_indicator_scan_table"] = None
+
+if "last_indicator_trend_ranking" not in st.session_state:
+    st.session_state["last_indicator_trend_ranking"] = None
+
+if "last_indicator_trend_top3" not in st.session_state:
+    st.session_state["last_indicator_trend_top3"] = None
 
 
 SMC_DISPLAY_COLS = [
@@ -168,6 +175,26 @@ def _format_indicator_scan_display(rows):
     available = [col for col in ordered_cols if col in df.columns]
     return df[available]
 
+
+def _format_indicator_trend_display(rows):
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows)
+    ordered_cols = [
+        "Pair",
+        "Direction",
+        "Profile",
+        "Score",
+        "D1Signal",
+        "H4Signal",
+        "M30Signal",
+        "M5Signal",
+        "Summary",
+    ]
+    available = [col for col in ordered_cols if col in df.columns]
+    return df[available]
+
 default_mode = os.getenv("BIZCLAW_TRADING_MODE", "FAST").strip().upper()
 if default_mode not in {"FAST", "STABLE"}:
     default_mode = "FAST"
@@ -223,6 +250,7 @@ if st.button("Run Market Scan"):
     currency_strength_table = run_currency_strength_table()
     smc_analysis = run_smc_scanner()
     indicator_scan_table = run_indicator_scan_table()
+    indicator_trend_ranking, indicator_trend_top3 = select_top_indicator_trends(indicator_scan_table)
     focus_ranking, focus_top3 = run_market_focus_engine(
         core_results=results,
         opportunity_ranked=ranked,
@@ -236,6 +264,8 @@ if st.button("Run Market Scan"):
         focus_ranking=focus_ranking,
         focus_top3=focus_top3,
         indicator_scan_table=indicator_scan_table,
+        indicator_trend_ranking=indicator_trend_ranking,
+        indicator_trend_top3=indicator_trend_top3,
     )
     st.session_state["last_payload"] = payload
     st.session_state["last_opportunity_ranked"] = ranked
@@ -245,6 +275,8 @@ if st.button("Run Market Scan"):
     st.session_state["last_focus_ranking"] = focus_ranking
     st.session_state["last_focus_top3"] = focus_top3
     st.session_state["last_indicator_scan_table"] = indicator_scan_table
+    st.session_state["last_indicator_trend_ranking"] = indicator_trend_ranking
+    st.session_state["last_indicator_trend_top3"] = indicator_trend_top3
 
     df = pd.DataFrame(results)
     focus_df = pd.DataFrame(focus_ranking)
@@ -302,6 +334,23 @@ if st.button("Run Market Scan"):
         list(indicator_scan_df.columns),
         "No indicator scan data available.",
     )
+
+    indicator_trend_df = _format_indicator_trend_display(indicator_trend_ranking)
+    _render_dataframe_section(
+        "Indicator Trend Engine Ranking",
+        indicator_trend_df,
+        list(indicator_trend_df.columns),
+        "No synchronized indicator trend candidates found.",
+    )
+
+    st.markdown("## Top 3 Indicator Trend Pairs")
+    if not indicator_trend_top3:
+        st.info("No indicator-trend top 3 candidates found from the current scan.")
+    else:
+        for row in indicator_trend_top3:
+            st.markdown(f"### {row['Pair']} — {row['Direction']} — Score {row['Score']}")
+            st.write(f"Profile: {row['Profile']} | D1: {row['D1Signal']} | H4: {row['H4Signal']} | M30: {row['M30Signal']} | M5: {row['M5Signal']}")
+            st.write(row['Summary'])
 
     st.markdown("## Top Analytical Focus")
 

@@ -15,6 +15,7 @@ from data_layer import (
 )
 from main import run_scanner, run_currency_strength_table, run_smc_scanner, run_opportunity_scanner
 from engines.indicator_scan_engine import run_indicator_scan_table
+from engines.indicator_trend_engine import select_top_indicator_trends
 from engines.market_focus_engine import run_market_focus_engine
 from payload_builder import build_scan_payload
 from supabase_publisher import publish_payload_to_supabase
@@ -56,6 +57,7 @@ def _build_payload(source: Optional[str] = None, export_dir: Optional[str] = Non
     currency_strength_table = run_currency_strength_table()
     smc_analysis = run_smc_scanner()
     indicator_scan_table = run_indicator_scan_table()
+    indicator_trend_ranking, indicator_trend_top3 = select_top_indicator_trends(indicator_scan_table)
     focus_ranking, focus_top3 = run_market_focus_engine(
         core_results=results,
         opportunity_ranked=opportunity_ranked,
@@ -71,6 +73,8 @@ def _build_payload(source: Optional[str] = None, export_dir: Optional[str] = Non
         focus_ranking=focus_ranking,
         focus_top3=focus_top3,
         indicator_scan_table=indicator_scan_table,
+        indicator_trend_ranking=indicator_trend_ranking,
+        indicator_trend_top3=indicator_trend_top3,
     )
     payload["source"] = context["source"]
     payload["exportDir"] = context["exportDir"]

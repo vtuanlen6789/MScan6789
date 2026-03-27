@@ -43,6 +43,8 @@ def build_scan_payload(
     focus_ranking: Optional[List[Dict[str, Any]]] = None,
     focus_top3: Optional[List[Dict[str, Any]]] = None,
     indicator_scan_table: Optional[List[Dict[str, Any]]] = None,
+    indicator_trend_ranking: Optional[List[Dict[str, Any]]] = None,
+    indicator_trend_top3: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     payload = {
         "generatedAt": _now_iso(),
@@ -68,5 +70,9 @@ def build_scan_payload(
         payload["focusTop3"] = focus_top3
     if indicator_scan_table is not None:
         payload["indicatorScanTable"] = indicator_scan_table
+    if indicator_trend_ranking is not None:
+        payload["indicatorTrendRanking"] = indicator_trend_ranking
+    if indicator_trend_top3 is not None:
+        payload["indicatorTrendTop3"] = indicator_trend_top3
 
     return payload
